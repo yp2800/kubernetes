@@ -44879,7 +44879,7 @@ func schema_k8sio_api_rbac_v1_RoleRef(ref common.ReferenceCallback) common.OpenA
 						},
 					},
 				},
-				Required: []string{"apiGroup", "kind", "name"},
+				Required: []string{"kind", "name"},
 			},
 			VendorExtensible: spec.VendorExtensible{
 				Extensions: spec.Extensions{
@@ -45565,7 +45565,7 @@ func schema_k8sio_api_rbac_v1alpha1_RoleRef(ref common.ReferenceCallback) common
 						},
 					},
 				},
-				Required: []string{"apiGroup", "kind", "name"},
+				Required: []string{"kind", "name"},
 			},
 		},
 	}
@@ -46241,7 +46241,7 @@ func schema_k8sio_api_rbac_v1beta1_RoleRef(ref common.ReferenceCallback) common.
 						},
 					},
 				},
-				Required: []string{"apiGroup", "kind", "name"},
+				Required: []string{"kind", "name"},
 			},
 		},
 	}
