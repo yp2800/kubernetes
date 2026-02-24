@@ -1741,6 +1741,12 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.36"
+- name: StaleControllerConsistencyJob
+  versionedSpecs:
+  - default: true
+    lockToDefault: false
+    preRelease: Beta
+    version: "1.36"
 - name: StatefulSetSemanticRevisionComparison
   versionedSpecs:
   - default: true
