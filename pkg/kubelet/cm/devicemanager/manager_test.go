@@ -436,7 +436,7 @@ func TestUpdateCapacityAllocatable(t *testing.T) {
 	e2.client = plugin.NewPluginClient(resourceName2, socketName, testManager)
 	eInfo := endpointInfo{e: e2, opts: nil}
 	testManager.endpoints[resourceName2] = eInfo
-	testManager.endpointStore[resourceName2] = []*endpointInfo{&eInfo}
+	testManager.endpointStore[resourceName2] = map[string]*endpointInfo{socketName: &eInfo}
 	callback(logger, resourceName2, devs)
 	capacity, allocatable, removedResources = testManager.GetCapacity()
 	as.Len(capacity, 2)
@@ -2172,7 +2172,7 @@ func TestEndpointSyncOnDisconnect(t *testing.T) {
 
 	eInfo := endpointInfo{e: ep, opts: nil}
 	manager.endpoints[resourceName] = eInfo
-	manager.endpointStore[resourceName] = []*endpointInfo{&eInfo}
+	manager.endpointStore[resourceName] = map[string]*endpointInfo{socketName: &eInfo}
 	devs := []*pluginapi.Device{
 		{ID: "Device1", Health: pluginapi.Healthy},
 		{ID: "Device2", Health: pluginapi.Healthy},

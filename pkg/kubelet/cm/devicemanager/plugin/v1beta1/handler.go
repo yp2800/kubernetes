@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"slices"
 	"time"
 
 	core "k8s.io/api/core/v1"
@@ -117,14 +116,22 @@ func (s *server) deregisterClient(logger klog.Logger, name string, socketPath st
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	for i, c := range s.clients[name] {
-		if c.SocketPath() == socketPath {
-			s.clients[name] = slices.Delete(s.clients[name], i, i+1)
-			if len(s.clients[name]) == 0 {
-				delete(s.clients, name)
-			}
+	var newClients []Client
+	clientRemoved := false
+	for _, c := range s.clients[name] {
+		if !clientRemoved && c.SocketPath() == socketPath {
+			clientRemoved = true
 			logger.V(2).Info("Deregistered client", "name", name, "socketPath", socketPath)
-			break
+			continue
+		}
+		newClients = append(newClients, c)
+	}
+
+	if clientRemoved {
+		if len(newClients) == 0 {
+			delete(s.clients, name)
+		} else {
+			s.clients[name] = newClients
 		}
 	}
 }

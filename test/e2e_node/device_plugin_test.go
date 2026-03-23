@@ -346,9 +346,9 @@ func testDevicePlugin(f *framework.Framework, pluginSockDir string) {
 			framework.ExpectNoError(err, "inconsistent device assignment after extra container restart - pod2")
 		})
 
-		ginkgo.It("Keeps device plugin assignments after one of the device plugins is deleted", func(ctx context.Context) {
+		ginkgo.It("Keeps device plugin assignments after delete the first device plugin", func(ctx context.Context) {
 			podRECMD := fmt.Sprintf("devs=$(ls /tmp/ | egrep '^Dev-[0-9]+$') && echo stub devices: $devs && sleep %s", sleepIntervalForever)
-			pod1 := e2epod.NewPodClient(f).CreateSync(ctx, makeBusyboxPod(SampleDeviceResourceName, podRECMD))
+			pod1 := e2epod.NewPodClient(f).CreateSync(ctx, makeBusyboxPod(e2enode.SampleDeviceResourceName, podRECMD))
 			deviceIDRE := "stub devices: (Dev-[0-9]+)"
 			devID1, err := parseLog(ctx, f, pod1.Name, pod1.Name, deviceIDRE)
 			framework.ExpectNoError(err, "getting logs for pod %q", pod1.Name)
@@ -365,8 +365,103 @@ func testDevicePlugin(f *framework.Framework, pluginSockDir string) {
 
 			v1PodResources, err = getV1NodeDevices(ctx)
 			framework.ExpectNoError(err)
-			err, _ = checkPodResourcesAssignment(v1PodResources, pod1.Namespace, pod1.Name, pod1.Spec.Containers[0].Name, SampleDeviceResourceName, []string{devID1})
+			err, _ = checkPodResourcesAssignment(v1PodResources, pod1.Namespace, pod1.Name, pod1.Spec.Containers[0].Name, e2enode.SampleDeviceResourceName, []string{devID1})
 			framework.ExpectNoError(err, "inconsistent device assignment after deleting second device plugin")
+		})
+
+		ginkgo.It("Keeps device plugin assignments after delete the second device plugin", func(ctx context.Context) {
+			podRECMD := fmt.Sprintf("devs=$(ls /tmp/ | egrep '^Dev-[0-9]+$') && echo stub devices: $devs && sleep %s", sleepIntervalForever)
+			pod1 := e2epod.NewPodClient(f).CreateSync(ctx, makeBusyboxPod(e2enode.SampleDeviceResourceName, podRECMD))
+			deviceIDRE := "stub devices: (Dev-[0-9]+)"
+			devID1, err := parseLog(ctx, f, pod1.Name, pod1.Name, deviceIDRE)
+			framework.ExpectNoError(err, "getting logs for pod %q", pod1.Name)
+			gomega.Expect(devID1).To(gomega.Not(gomega.Equal("")), "pod1 requested a device but started successfully without")
+
+			ginkgo.By("Deleting the second device plugin")
+			e2epod.NewPodClient(f).DeleteSync(ctx, devicePluginPod2.Name, metav1.DeleteOptions{}, f.Timeouts.PodDelete)
+			waitForContainerRemoval(ctx, devicePluginPod2.Spec.Containers[0].Name, devicePluginPod2.Name, devicePluginPod2.Namespace)
+
+			ginkgo.By("Verifying the device assignment is preserved after deleting one device plugin")
+			pod1, err = e2epod.NewPodClient(f).Get(ctx, pod1.Name, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			gomega.Expect(pod1.Status.Phase).To(gomega.Equal(v1.PodRunning))
+
+			v1PodResources, err = getV1NodeDevices(ctx)
+			framework.ExpectNoError(err)
+			err, _ = checkPodResourcesAssignment(v1PodResources, pod1.Namespace, pod1.Name, pod1.Spec.Containers[0].Name, e2enode.SampleDeviceResourceName, []string{devID1})
+			framework.ExpectNoError(err, "inconsistent device assignment after deleting second device plugin")
+		})
+
+		ginkgo.It("Keeps device plugin assignments after the second device plugin is disconnected and reconnected", func(ctx context.Context) {
+			// Recreate dp2 with a 10s startup delay exclusively for this test case
+			// so we have a realistic disconnected window.
+			err := e2epod.NewPodClient(f).Delete(ctx, devicePluginPod2.Name, metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
+			waitForContainerRemoval(ctx, devicePluginPod2.Spec.Containers[0].Name, devicePluginPod2.Name, devicePluginPod2.Namespace)
+
+			dp2 := getSampleDevicePluginPod(pluginSockDir, "dp2")
+			dp2.Spec.Containers[0].Command = []string{"/bin/sh", "-c"}
+			dp2.Spec.Containers[0].Args = []string{"sleep 10 && exec /sampledeviceplugin -alsologtostderr"}
+			devicePluginPod2 = e2epod.NewPodClient(f).CreateSync(ctx, dp2)
+
+			gomega.Eventually(ctx, func(ctx context.Context) bool {
+				node, ready := getLocalTestNode(ctx, f)
+				return ready && e2enode.CountSampleDeviceCapacity(node) == e2enode.SampleDevsAmount
+			}, 5*time.Minute, framework.Poll).Should(gomega.BeTrueBecause("expected devices to be available on local node"))
+
+			podRECMD := fmt.Sprintf("devs=$(ls /tmp/ | egrep '^Dev-[0-9]+$') && echo stub devices: $devs && sleep %s", sleepIntervalForever)
+			pod1 := e2epod.NewPodClient(f).CreateSync(ctx, makeBusyboxPod(e2enode.SampleDeviceResourceName, podRECMD))
+			deviceIDRE := "stub devices: (Dev-[0-9]+)"
+			devID1, err := parseLog(ctx, f, pod1.Name, pod1.Name, deviceIDRE)
+			framework.ExpectNoError(err, "getting logs for pod %q", pod1.Name)
+			gomega.Expect(devID1).To(gomega.Not(gomega.Equal("")), "pod1 requested a device but started successfully without")
+
+			ginkgo.By("Making the second device plugin fail to respond and reconnect by killing its process")
+			dpPod, err := e2epod.NewPodClient(f).Get(ctx, devicePluginPod2.Name, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			initialRestartCount := dpPod.Status.ContainerStatuses[0].RestartCount
+
+			_, _, err = e2epod.ExecCommandInContainerWithFullOutput(f, devicePluginPod2.Name, devicePluginPod2.Spec.Containers[0].Name, "kill", "1")
+			framework.ExpectNoError(err, "killing sampledeviceplugin process")
+
+			ginkgo.By("Verifying that the plugin is disconnected and original device assignments are preserved")
+			time.Sleep(5 * time.Second)
+			pod1, err = e2epod.NewPodClient(f).Get(ctx, pod1.Name, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			gomega.Expect(pod1.Status.Phase).To(gomega.Equal(v1.PodRunning))
+
+			v1PodResources, err := getV1NodeDevices(ctx)
+			framework.ExpectNoError(err)
+			err, _ = checkPodResourcesAssignment(v1PodResources, pod1.Namespace, pod1.Name, pod1.Spec.Containers[0].Name, e2enode.SampleDeviceResourceName, []string{devID1})
+			framework.ExpectNoError(err, "inconsistent device assignment after disconnecting the second DP")
+
+			ginkgo.By("Waiting for container to restart and reconnect")
+			gomega.Eventually(ctx, func() int {
+				p, err := e2epod.NewPodClient(f).Get(ctx, devicePluginPod2.Name, metav1.GetOptions{})
+				if err != nil || len(p.Status.ContainerStatuses) == 0 {
+					return 0
+				}
+				return int(p.Status.ContainerStatuses[0].RestartCount)
+			}, 5*time.Minute, framework.Poll).Should(gomega.BeNumerically(">", initialRestartCount))
+
+			ginkgo.By("Verifying the new plugin reconnected, original device assignments are preserved")
+			time.Sleep(10 * time.Second)
+
+			pod1, err = e2epod.NewPodClient(f).Get(ctx, pod1.Name, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			gomega.Expect(pod1.Status.Phase).To(gomega.Equal(v1.PodRunning))
+
+			v1PodResources, err = getV1NodeDevices(ctx)
+			framework.ExpectNoError(err)
+			err, _ = checkPodResourcesAssignment(v1PodResources, pod1.Namespace, pod1.Name, pod1.Spec.Containers[0].Name, e2enode.SampleDeviceResourceName, []string{devID1})
+			framework.ExpectNoError(err, "inconsistent device assignment after reconnecting the second DP")
+
+			gomega.Eventually(ctx, func() bool {
+				node, ready := getLocalTestNode(ctx, f)
+				return ready &&
+					e2enode.CountSampleDeviceCapacity(node) == e2enode.SampleDevsAmount &&
+					e2enode.CountSampleDeviceAllocatable(node) == e2enode.SampleDevsAmount
+			}, 30*time.Second, framework.Poll).Should(gomega.BeTrueBecause("expected resource to be available on local node"))
 		})
 
 		// simulate kubelet restart. A compliant device plugin is expected to re-register, while the pod and the container stays running.
@@ -902,7 +997,7 @@ func testDevicePluginNodeReboot(f *framework.Framework, pluginSockDir string) {
 
 			dp2 := &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: SampleDevicePluginName + "-2",
+					Name: e2enode.SampleDevicePluginName + "-2",
 				},
 				Spec: ds.Spec.Template.Spec,
 			}
