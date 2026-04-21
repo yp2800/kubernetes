@@ -87,12 +87,13 @@ func (s *server) connectClient(ctx context.Context, name string, socketPath stri
 
 	s.registerClient(logger, name, c)
 	if err := c.Connect(ctx); err != nil {
+		// Need to re-connect the client if connection fails
 		s.deregisterClient(logger, name, socketPath)
-		logger.Error(err, "Failed to connect to new client", "resource", name)
+		logger.Error(err, "Failed to connect to new client", "resource", name, "socketPath", socketPath)
 		return err
 	}
 
-	logger.V(2).Info("Connected to new client", "resource", name)
+	logger.V(2).Info("Connected to new client", "resource", name, "socketPath", socketPath)
 	go func() {
 		s.runClient(ctx, name, c)
 	}()
@@ -109,30 +110,30 @@ func (s *server) registerClient(logger klog.Logger, name string, c Client) {
 	defer s.mutex.Unlock()
 
 	s.clients[name] = append(s.clients[name], c)
-	logger.V(2).Info("Registered client", "name", name)
+	logger.V(2).Info("Registered client", "name", name, "socketPath", c.SocketPath())
 }
 
 func (s *server) deregisterClient(logger klog.Logger, name string, socketPath string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	// When a client is deregistered, we will rebuild the clients array, removing the given client.
+	// We intentionally avoid mutating in place.
+	// We only remove the connection when both the client name and socket path matches.
+	// This ensures if there is two connections with same client name, only that specific client is removed.
 	var newClients []Client
-	clientRemoved := false
 	for _, c := range s.clients[name] {
-		if !clientRemoved && c.SocketPath() == socketPath {
-			clientRemoved = true
+		if c.SocketPath() == socketPath {
 			logger.V(2).Info("Deregistered client", "name", name, "socketPath", socketPath)
 			continue
 		}
 		newClients = append(newClients, c)
 	}
 
-	if clientRemoved {
-		if len(newClients) == 0 {
-			delete(s.clients, name)
-		} else {
-			s.clients[name] = newClients
-		}
+	if len(newClients) == 0 {
+		delete(s.clients, name)
+	} else {
+		s.clients[name] = newClients
 	}
 }
 

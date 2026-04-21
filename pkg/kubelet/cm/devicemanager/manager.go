@@ -274,7 +274,7 @@ func (m *ManagerImpl) PluginDisconnected(logger klog.Logger, resourceName string
 	if last {
 		delete(m.endpointStore, resourceName)
 		m.markResourceUnhealthy(logger, resourceName)
-		logger.V(2).Info("Last DP for this resource disconnected", "resource", resourceName)
+		logger.V(2).Info("Last device plugin for this resource disconnected", "resource", resourceName)
 	} else {
 		delete(endpoints, socketPath)
 		// Promote an arbitrary remaining endpoint to the primary endpoints map
