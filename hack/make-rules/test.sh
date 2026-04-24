@@ -176,25 +176,10 @@ for arg; do
 done
 if [[ ${#testcases[@]} -eq 0 ]]; then
   # If the user passed no targets in, we want ~everything.
-  kube::util::read-array testcases < <(kube::test::find_go_packages)
-
-  # In addition, also test some specific upstream packages.
-  # Which packages to include here is a bit subjective:
-  # - Should be "important". In particular, it should
-  #   be compiled into one of our production binaries (use
-  #   `go mod why $package` without the vendor prefix) or
-  #   be used regularly.
-  # - Should be at risk of breaking because we compile them
-  #   differently than upstream (different Go version, different
-  #   dependencies).
-  # - Must support being tested outside of their normal source tree.
-  # - Must be reasonably fast.
-  testcases+=(
-      hack/tools/golangci-lint/sigs.k8s.io/logtools/...
-
-      # This is just an one package which is known to work.
-      # The goal is to run more.
-      vendor/go.etcd.io/etcd/client/pkg/v3/fileutil
+  # In addition also test some specific upstream packages.
+  kube::util::read-array testcases < <(
+    kube::test::find_go_packages
+    grep -v -e '^#' -e '^$' "${KUBE_ROOT}/hack/dependency-unit-tests.conf"
   )
 else
   # If the user passed targets, we should normalize them.
