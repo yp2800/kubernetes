@@ -55,7 +55,7 @@ func RunAuthzSelectorsLibraryTests(t *testing.T, featureEnabled bool) {
 
 	// Start the server with the desired feature enablement
 	args := []string{
-		fmt.Sprintf("--feature-gates=AuthorizeNodeWithSelectors=%v,AuthorizeWithSelectors=%v", featureEnabled, featureEnabled),
+		fmt.Sprintf("--feature-gates=AuthorizeWithSelectors=%v", featureEnabled),
 		fmt.Sprintf("--runtime-config=%s=true", resourceapi.SchemeGroupVersion), // For ResourceClaim test case below.
 	}
 	if !featureEnabled {
