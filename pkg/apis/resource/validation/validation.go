@@ -56,12 +56,18 @@ import (
 // (flattened fields) and v1/v1beta2 (fields under 'exactly') for validation error paths.
 var ResourceNormalizationRules = []field.NormalizationRule{
 	{
-		Regexp:      regexp.MustCompile(`spec.devices\.requests\[(\d+)\]\.(deviceClassName|selectors|allocationMode|count|adminAccess|tolerations)`),
+		// ResourceClaim
+		Regexp:      regexp.MustCompile(`spec\.devices\.requests\[(\d+)\]\.(deviceClassName|selectors|allocationMode|count|adminAccess|tolerations)`),
 		Replacement: "spec.devices.requests[$1].exactly.$2",
 	},
 	{
+		// ResourceClaimTemplate (RCT.Spec.Spec adds an extra "spec." prefix)
+		Regexp:      regexp.MustCompile(`spec\.spec\.devices\.requests\[(\d+)\]\.(deviceClassName|selectors|allocationMode|count|adminAccess|tolerations)`),
+		Replacement: "spec.spec.devices.requests[$1].exactly.$2",
+	},
+	{
 		// This v1beta1 'basic' to flattened rule is to support ResourceSlice
-		Regexp:      regexp.MustCompile(`spec.devices\[(\d+)\]\.basic\.`),
+		Regexp:      regexp.MustCompile(`spec\.devices\[(\d+)\]\.basic\.`),
 		Replacement: "spec.devices[$1].",
 	},
 }
