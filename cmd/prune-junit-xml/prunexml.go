@@ -282,9 +282,10 @@ func (p *packageOwners) addOwner(name string) string {
 		dir = p.pkgs[name]
 	}
 
-	// Walk up starting from an absolute path until we hit the filesystem root. On Windows filepath (instead
-	// of path) is needed because "go list" returns backslash-separated paths.
-	for ; dir != "" && dir != "." && dir != "/" && dir != filepath.VolumeName(dir)+string(filepath.Separator); dir = filepath.Dir(dir) {
+	// Walk up starting from an absolute path until we hit the filesystem root.
+	// filepath.Dir returns dir itself at any root (/, C:\, \\server\share),
+	// so checking filepath.Dir(dir) != dir handles all path styles uniformly.
+	for ; dir != "" && filepath.Dir(dir) != dir; dir = filepath.Dir(dir) {
 		data, err := os.ReadFile(filepath.Join(dir, "OWNERS"))
 		if err != nil {
 			continue
