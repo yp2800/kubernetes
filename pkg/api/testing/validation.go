@@ -424,12 +424,12 @@ func verifyValidationEquivalence(t *testing.T, expectedErrs field.ErrorList, run
 		testCtx := rest.WithAllDeclarativeEnforcedForTest(ctx)
 		allDeclarativeErrs := runValidations(testCtx)
 
-		// In this mode, strategy.go validation remove all hand written validations errors which are marked covered by DV.
+		// In this mode, strategy.go validation remove all hand written validations errors which are marked covered by declarative validations.
 		// so we have to filter out errors which are filtered out by strategy.go.
-		// This is because DV will not return those errors due to short circuiting of validations at the parent node.
+		// This is because declarative validations do not return those errors due to short circuiting of validations at the parent node.
 		filteredExpectedErrors := make(field.ErrorList, 0, len(expectedErrs))
 		for _, err := range expectedErrs {
-			if !err.ShortCircuitedInDV {
+			if !err.ShortCircuitedInDeclarative {
 				filteredExpectedErrors = append(filteredExpectedErrors, err)
 			}
 		}
